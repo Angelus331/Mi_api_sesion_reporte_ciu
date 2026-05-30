@@ -26,9 +26,18 @@ return new class extends Migration
 
             $table->string('status')->default('pendiente');
 
-            $table->timestamps();
+            // Creamos la columna category_id de forma simple
+            $table->unsignedBigInteger('category_id')->nullable();
 
-            $table->foreignId('category_id')->nullable()->constrained()->nullOnDelete();
+            $table->timestamps();
+        });
+
+        // Esto evita que MySQL se caiga por problemas de orden cronológico de archivos
+        Schema::table('reports', function (Blueprint $table) {
+            $table->foreign('category_id')
+                  ->references('id')
+                  ->on('categories')
+                  ->nullOnDelete();
         });
     }
 
