@@ -21,28 +21,28 @@ class ReportController extends Controller
         }
 
         return $query->latest()->get()->map(function ($report) {
-
             $report->image_url = $report->image
                 ? asset('storage/' . $report->image)
                 : null;
-
             return $report;
         });
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
         //
     }
+
     public function store(Request $request)
     {
+        // VALIDACIÓN AGRESIVA: Asegura que las coordenadas sean numéricas y la categoría exista
         $request->validate([
             'title' => 'required|min:5|max:100',
             'description' => 'required|min:10|max:500',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048'
+            'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+            'category_id' => 'nullable|integer',
         ]);
 
         $imagePath = null;
@@ -51,14 +51,15 @@ class ReportController extends Controller
             $imagePath = $request->file('image')->store('reports', 'public');
         }
 
+        // CASTEO SEGURO: Convertimos explícitamente a float para limpiar cualquier residuo string de Flutter
         $report = Report::create([
-            'user_id' => $request->user()->id, // Obtiene el usuario directamente de la petición
+            'user_id' => $request->user()->id,
             'title' => $request->title,
             'description' => $request->description,
             'image' => $imagePath,
-            'latitude' => $request->latitude,
-            'longitude' => $request->longitude,
-            'category_id' => $request->category_id,
+            'latitude' => $request->latitude ? (float) $request->latitude : null,   // 👈 Casteo a float
+            'longitude' => $request->longitude ? (float) $request->longitude : null, // 👈 Casteo a float
+            'category_id' => $request->category_id ? (int) $request->category_id : null,
         ]);
 
         Notification::create([
@@ -66,14 +67,15 @@ class ReportController extends Controller
             'message' => 'Reporte creado correctamente'
         ]);
 
+        // Retornamos el objeto con su URL de imagen mapeada para que Flutter lo pinte al instante
+        $report->image_url = $report->image ? asset('storage/' . $report->image) : null;
+
         return response()->json($report, 201);
     }
-    /**
-     * Display the specified resource.
-     */
+
     public function show(string $id)
     {
-        $report =  Report::findOrFail($id);
+        $report = Report::findOrFail($id);
 
         $report->image_url = $report->image
             ? asset('storage/' . $report->image)
@@ -82,44 +84,47 @@ class ReportController extends Controller
         return $report;
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Report $report)
     {
         //
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, string $id)
     {
         $report = Report::findOrFail($id);
 
+        // Validamos también la actualización de la misma manera segura
+        $request->validate([
+            'title' => 'nullable|min:5|max:100',
+            'description' => 'nullable|min:10|max:500',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+        ]);
+
         if ($request->hasFile('image')) {
             $imagePath = $request->file('image')->store('reports', 'public');
-
             $report->image = $imagePath;
         }
 
         $report->title = $request->title ?? $report->title;
         $report->description = $request->description ?? $report->description;
-        $report->latitude = $request->latitude ?? $report->latitude;
-        $report->longitude = $request->longitude ?? $report->longitude;
+
+        // Asignamos convirtiendo a tipos numéricos limpios
+        if ($request->has('latitude')) $report->latitude = $request->latitude ? (float) $request->latitude : null;
+        if ($request->has('longitude')) $report->longitude = $request->longitude ? (float) $request->longitude : null;
 
         $report->save();
+
+        // Mapeamos el nuevo URL antes de responder a Flutter
+        $report->image_url = $report->image ? asset('storage/' . $report->image) : null;
 
         return response()->json($report);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(string $id)
     {
         $report = Report::findOrFail($id);
-
         $report->delete();
 
         return response()->json([
@@ -131,6 +136,10 @@ class ReportController extends Controller
     {
         return Report::where('user_id', $request->user()->id)
             ->latest()
-            ->get();
+            ->get()
+            ->map(function ($report) {
+                $report->image_url = $report->image ? asset('storage/' . $report->image) : null;
+                return $report;
+            });
     }
 }
